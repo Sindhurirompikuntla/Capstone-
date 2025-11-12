@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Transcript Analysis - Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .input-section {
+            margin-bottom: 30px;
+        }
+        
+        .input-type-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .input-type-btn {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .input-type-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .input-type-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .input-area {
+            display: none;
+        }
+        
+        .input-area.active {
+            display: block;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .file-upload {
+            border: 2px dashed #667eea;
+            border-radius: 5px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .file-upload:hover {
+            background: #f8f9ff;
+        }
+        
+        .file-upload input {
+            display: none;
+        }
+        
+        .analyze-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s;
+        }
+        
+        .analyze-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .analyze-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .results {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .results.show {
+            display: block;
+        }
+        
+        .result-section {
+            background: #f8f9ff;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        
+        .result-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .requirement, .recommendation, .action-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .priority {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .priority.high {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .priority.medium {
+            background: #ffd93d;
+            color: #333;
+        }
+        
+        .priority.low {
+            background: #6bcf7f;
+            color: white;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .error.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Sales Transcript Analysis</h1>
+            <p>Analyze sales conversations with AI-powered insights</p>
+        </div>
+        
+        <div class="content">
+            <div class="input-section">
+                <div class="input-type-selector">
+                    <button class="input-type-btn active" onclick="switchInputType('text')">
+                        📝 Text Transcript
+                    </button>
+                    <button class="input-type-btn" onclick="switchInputType('audio')">
+                        🎤 Audio File
+                    </button>
+                </div>
+                
+                <div id="text-input" class="input-area active">
+                    <textarea id="transcript-text" placeholder="Paste your sales conversation transcript here...
+
+Example:
+Sales Rep: Hello, how can I help you today?
+Client: I'm looking for a CRM solution for my team..."></textarea>
+                </div>
+                
+                <div id="audio-input" class="input-area">
+                    <div class="file-upload" onclick="document.getElementById('audio-file').click()">
+                        <p>📁 Click to upload audio file</p>
+                        <p style="font-size: 0.9em; color: #666; margin-top: 10px;">
+                            Supported formats: MP3, WAV, M4A, OGG (Max 25MB)
+                        </p>
+                        <input type="file" id="audio-file" accept=".mp3,.wav,.m4a,.ogg">
+                        <p id="file-name" style="margin-top: 10px; font-weight: bold;"></p>
+                    </div>
+                </div>
+                
+                <button class="analyze-btn" onclick="analyzeTranscript()">
+                    🔍 Analyze Transcript
+                </button>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Analyzing transcript... This may take a moment.</p>
+            </div>
+            
+            <div class="error" id="error"></div>
+            
+            <div class="results" id="results">
+                <div class="result-section">
+                    <h3>📋 Requirements</h3>
+                    <div id="requirements-list"></div>
+                </div>
+                
+                <div class="result-section">
+                    <h3>💡 Recommendations</h3>
+                    <div id="recommendations-list"></div>
+                </div>
+                
+                <div class="result-section">
+                    <h3>📊 Summary</h3>
+                    <div id="summary-content"></div>
+                </div>
+                
+                <div class="result-section">
+                    <h3>✅ Action Items</h3>
+                    <div id="action-items-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE_URL = 'http://localhost:8000';
+        let currentInputType = 'text';
+        
+        function switchInputType(type) {
+            currentInputType = type;
+            
+            // Update buttons
+            document.querySelectorAll('.input-type-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update input areas
+            document.querySelectorAll('.input-area').forEach(area => {
+                area.classList.remove('active');
+            });
+            document.getElementById(`${type}-input`).classList.add('active');
+        }
+        
+        document.getElementById('audio-file').addEventListener('change', function(e) {
+            const fileName = e.target.files[0]?.name;
+            if (fileName) {
+                document.getElementById('file-name').textContent = `Selected: ${fileName}`;
+            }
+        });
+        
+        async function analyzeTranscript() {
+            // Hide previous results and errors
+            document.getElementById('results').classList.remove('show');
+            document.getElementById('error').classList.remove('show');
+            
+            // Show loading
+            document.getElementById('loading').classList.add('show');
+            
+            try {
+                let response;
+                
+                if (currentInputType === 'text') {
+                    const transcript = document.getElementById('transcript-text').value;
+                    if (!transcript.trim()) {
+                        throw new Error('Please enter a transcript');
+                    }
+                    
+                    response = await fetch(`${API_BASE_URL}/analyze/text`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            transcript: transcript,
+                            store_in_db: true
+                        })
+                    });
+                } else {
+                    const fileInput = document.getElementById('audio-file');
+                    if (!fileInput.files[0]) {
+                        throw new Error('Please select an audio file');
+                    }
+                    
+                    const formData = new FormData();
+                    formData.append('file', fileInput.files[0]);
+                    formData.append('store_in_db', 'true');
+                    
+                    response = await fetch(`${API_BASE_URL}/analyze/audio`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                }
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || 'Analysis failed');
+                }
+                
+                displayResults(data.analysis);
+                
+            } catch (error) {
+                document.getElementById('error').textContent = `Error: ${error.message}`;
+                document.getElementById('error').classList.add('show');
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        }
+        
+        function displayResults(analysis) {
+            // Display requirements
+            const reqList = document.getElementById('requirements-list');
+            reqList.innerHTML = analysis.requirements.map(req => `
+                <div class="requirement">
+                    <strong>${req.requirement}</strong>
+                    <span class="priority ${req.priority.toLowerCase()}">${req.priority}</span>
+                    <p style="margin-top: 10px; color: #666;">${req.context}</p>
+                </div>
+            `).join('');
+            
+            // Display recommendations
+            const recList = document.getElementById('recommendations-list');
+            recList.innerHTML = analysis.recommendations.map(rec => `
+                <div class="recommendation">
+                    <strong>${rec.recommendation}</strong>
+                    <span class="priority ${rec.priority.toLowerCase()}">${rec.priority}</span>
+                    <p style="margin-top: 10px; color: #666;">${rec.rationale}</p>
+                </div>
+            `).join('');
+            
+            // Display summary
+            const summary = analysis.summary;
+            document.getElementById('summary-content').innerHTML = `
+                <p><strong>Overview:</strong> ${summary.overview}</p>
+                <p><strong>Client Needs:</strong> ${summary.client_needs}</p>
+                <p><strong>Pain Points:</strong> ${summary.pain_points}</p>
+                <p><strong>Opportunities:</strong> ${summary.opportunities}</p>
+                <p><strong>Next Steps:</strong> ${summary.next_steps}</p>
+                <p><strong>Sentiment:</strong> ${summary.sentiment}</p>
+                <p><strong>Engagement:</strong> ${summary.engagement_level}</p>
+            `;
+            
+            // Display action items
+            const actionList = document.getElementById('action-items-list');
+            actionList.innerHTML = analysis.action_items.map(item => `
+                <div class="action-item">
+                    <strong>${item.action}</strong>
+                    <span class="priority ${item.priority.toLowerCase()}">${item.priority}</span>
+                    <p style="margin-top: 10px; color: #666;">Owner: ${item.owner}</p>
+                </div>
+            `).join('');
+            
+            // Show results
+            document.getElementById('results').classList.add('show');
+        }
+    </script>
+</body>
+</html>
+
