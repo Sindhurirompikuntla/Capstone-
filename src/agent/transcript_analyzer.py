@@ -1,60 +1,53 @@
-"""Sales transcript analyzer using LiteLLM and Azure OpenAI."""
+"""Sales transcript analyzer using Azure OpenAI."""
 import json
-import litellm
+from openai import AzureOpenAI
 from typing import Dict, Any, Optional
 from src.utils.config_loader import get_config
 from src.utils.logger import setup_logger
 
 
 class TranscriptAnalyzer:
-    """Analyze sales conversation transcripts using LLM."""
-    
+    """Analyze sales conversation transcripts using Azure OpenAI."""
+
     def __init__(self):
         """Initialize the transcript analyzer."""
         self.config = get_config()
         self.logger = setup_logger(__name__)
-        
-        # Configure LiteLLM for Azure OpenAI
-        self._setup_litellm()
-    
-    def _setup_litellm(self):
-        """Configure LiteLLM with Azure OpenAI settings."""
-        # Set Azure OpenAI configuration
-        litellm.api_key = self.config.get('azure_openai.api_key')
-        litellm.api_base = self.config.get('azure_openai.endpoint')
-        litellm.api_version = self.config.get('azure_openai.api_version')
-        
-        # Set timeout and retries
-        litellm.timeout = self.config.get('litellm.timeout', 60)
-        litellm.num_retries = self.config.get('litellm.max_retries', 3)
-        
-        self.logger.info("LiteLLM configured for Azure OpenAI")
+
+        # Configure Azure OpenAI client
+        self.client = AzureOpenAI(
+            api_key=self.config.get('azure_openai.api_key'),
+            api_version=self.config.get('azure_openai.api_version'),
+            azure_endpoint=self.config.get('azure_openai.endpoint')
+        )
+
+        self.deployment_name = self.config.get('azure_openai.deployment_name')
+        self.logger.info(f"Azure OpenAI configured with deployment: {self.deployment_name}")
     
     def analyze_transcript(self, transcript: str) -> Dict[str, Any]:
         """Analyze a sales conversation transcript.
-        
+
         Args:
             transcript: The conversation transcript text
-            
+
         Returns:
             Dictionary containing analysis results with requirements, recommendations, and summary
         """
         self.logger.info("Starting transcript analysis")
-        
+
         try:
             # Get prompts
             system_prompt = self.config.get_prompt('system_prompt')
             analysis_prompt = self.config.get_prompt('analysis_prompt')
-            
+
             # Format the analysis prompt with transcript
             user_prompt = analysis_prompt.format(transcript=transcript)
-            
-            # Call LiteLLM with Azure OpenAI
-            deployment_name = self.config.get('azure_openai.deployment_name')
-            model = f"azure/{deployment_name}"
-            
-            response = litellm.completion(
-                model=model,
+
+            self.logger.info(f"Calling Azure OpenAI with deployment: {self.deployment_name}")
+
+            # Call Azure OpenAI
+            response = self.client.chat.completions.create(
+                model=self.deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -63,16 +56,19 @@ class TranscriptAnalyzer:
                 max_tokens=self.config.get('azure_openai.max_tokens', 2000),
                 response_format={"type": "json_object"}
             )
-            
+
             # Extract and parse response
             content = response.choices[0].message.content
+            self.logger.info(f"Azure OpenAI Response: {content[:200]}...")
+
             analysis_result = json.loads(content)
-            
+            self.logger.info(f"Parsed result keys: {list(analysis_result.keys())}")
+
             self.logger.info("Transcript analysis completed successfully")
             return analysis_result
-            
+
         except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse LLM response as JSON: {e}")
+            self.logger.error(f"Failed to parse response as JSON: {e}")
             return self._get_error_response("Failed to parse analysis results")
         except Exception as e:
             self.logger.error(f"Error during transcript analysis: {e}")

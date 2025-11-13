@@ -9,7 +9,7 @@ from pymilvus import (
     DataType,
     utility
 )
-import litellm
+from openai import AzureOpenAI
 from src.utils.config_loader import get_config
 from src.utils.logger import setup_logger
 
@@ -21,13 +21,20 @@ class MilvusVectorStore:
         """Initialize Milvus vector store."""
         self.config = get_config()
         self.logger = setup_logger(__name__)
-        
-        self.collection_name = self.config.get('milvus.collection_name', 'sales_transcripts')
+
+        # Configure Azure OpenAI client for embeddings
+        self.client = AzureOpenAI(
+            api_key=self.config.get('azure_openai.api_key'),
+            api_version=self.config.get('azure_openai.api_version'),
+            azure_endpoint=self.config.get('azure_openai.endpoint')
+        )
+
+        self.collection_name = self.config.get('milvus.collection_name', 'test')
         self.dimension = self.config.get('milvus.dimension', 1536)
-        
+
         # Connect to Milvus
         self._connect()
-        
+
         # Create or load collection
         self._setup_collection()
     
@@ -128,16 +135,13 @@ class MilvusVectorStore:
         """
         try:
             deployment_name = self.config.get('embeddings.deployment_name', 'text-embedding-ada-002')
-            
-            response = litellm.embedding(
-                model=f"azure/{deployment_name}",
-                input=[text],
-                api_key=self.config.get('azure_openai.api_key'),
-                api_base=self.config.get('azure_openai.endpoint'),
-                api_version=self.config.get('azure_openai.api_version')
+
+            response = self.client.embeddings.create(
+                model=deployment_name,
+                input=text
             )
-            
-            return response.data[0]['embedding']
+
+            return response.data[0].embedding
             
         except Exception as e:
             self.logger.error(f"Failed to generate embedding: {e}")

@@ -9,7 +9,7 @@ def main():
     config = get_config()
     
     # Get server settings
-    host = config.get('fastapi.host', '0.0.0.0')
+    host="localhost"
     port = config.get('fastapi.port', 8000)
     reload = config.get('fastapi.reload', True)
     

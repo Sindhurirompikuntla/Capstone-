@@ -2,19 +2,26 @@
 import os
 from pathlib import Path
 from typing import Optional
-import litellm
+from openai import AzureOpenAI
 from src.utils.config_loader import get_config
 from src.utils.logger import setup_logger
 
 
 class AudioProcessor:
     """Process audio files and convert to text transcripts."""
-    
+
     def __init__(self):
         """Initialize the audio processor."""
         self.config = get_config()
         self.logger = setup_logger(__name__)
-        
+
+        # Configure Azure OpenAI client
+        self.client = AzureOpenAI(
+            api_key=self.config.get('azure_openai.api_key'),
+            api_version=self.config.get('azure_openai.api_version'),
+            azure_endpoint=self.config.get('azure_openai.endpoint')
+        )
+
         # Supported audio formats
         self.supported_formats = self.config.get('audio.supported_formats', ['mp3', 'wav', 'm4a', 'ogg'])
         self.max_file_size_mb = self.config.get('audio.max_file_size_mb', 25)
@@ -37,16 +44,12 @@ class AudioProcessor:
             
             # Read audio file
             with open(audio_file_path, 'rb') as audio_file:
-                # Use LiteLLM for Azure OpenAI Whisper
+                # Use Azure OpenAI Whisper
                 deployment_name = self.config.get('audio.whisper_deployment', 'whisper-1')
-                
-                # Configure for Azure OpenAI
-                response = litellm.transcription(
-                    model=f"azure/{deployment_name}",
-                    file=audio_file,
-                    api_key=self.config.get('azure_openai.api_key'),
-                    api_base=self.config.get('azure_openai.endpoint'),
-                    api_version=self.config.get('azure_openai.api_version')
+
+                response = self.client.audio.transcriptions.create(
+                    model=deployment_name,
+                    file=audio_file
                 )
                 
                 transcript = response.text

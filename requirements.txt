@@ -23,6 +23,12 @@ python-dotenv==1.0.0
 # Utilities
 requests==2.31.0
 
+# Document Processing
+pypdf2==3.0.1
+python-docx==1.2.0
+pandas==2.3.3
+openpyxl==3.1.5
+
 # Jupyter Notebooks (optional, for examples)
 jupyter==1.0.0
 notebook==7.0.6
