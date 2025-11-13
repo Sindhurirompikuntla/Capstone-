@@ -54,17 +54,26 @@ class ConfigLoader:
             self.config['azure_openai']['endpoint'] = os.getenv("AZURE_OPENAI_ENDPOINT")
         if os.getenv("AZURE_OPENAI_API_KEY"):
             self.config['azure_openai']['api_key'] = os.getenv("AZURE_OPENAI_API_KEY")
-            self.config['litellm']['api_key'] = os.getenv("AZURE_OPENAI_API_KEY")
         if os.getenv("AZURE_OPENAI_API_VERSION"):
             self.config['azure_openai']['api_version'] = os.getenv("AZURE_OPENAI_API_VERSION")
         if os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"):
             self.config['azure_openai']['deployment_name'] = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-        
+        if os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"):
+            self.config['embeddings']['deployment_name'] = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+
         # Milvus
         if os.getenv("MILVUS_HOST"):
             self.config['milvus']['host'] = os.getenv("MILVUS_HOST")
         if os.getenv("MILVUS_PORT"):
             self.config['milvus']['port'] = int(os.getenv("MILVUS_PORT"))
+        if os.getenv("MILVUS_USER"):
+            self.config['milvus']['user'] = os.getenv("MILVUS_USER")
+        if os.getenv("MILVUS_PASSWORD"):
+            self.config['milvus']['password'] = os.getenv("MILVUS_PASSWORD")
+        if os.getenv("MILVUS_SECURE"):
+            self.config['milvus']['secure'] = os.getenv("MILVUS_SECURE").lower() == 'true'
+        if os.getenv("MILVUS_COLLECTION_NAME"):
+            self.config['milvus']['collection_name'] = os.getenv("MILVUS_COLLECTION_NAME")
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value by key.

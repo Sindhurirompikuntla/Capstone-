@@ -1,32 +1,26 @@
 # Main Configuration File for Sales Transcript Analysis Agent
+# All sensitive credentials should be set in config/.env file
 
 # Azure OpenAI Configuration
+# Values will be loaded from .env file
 azure_openai:
-  endpoint: ""
-  api_key: ""
-  api_version: "2024-02-15-preview"
-  deployment_name: "gpt-4o"
+  endpoint: ""  # Set via AZURE_OPENAI_ENDPOINT in .env
+  api_key: ""  # Set via AZURE_OPENAI_API_KEY in .env
+  api_version: "2024-05-01-preview"
+  deployment_name: "gpt-4o"  # Set via AZURE_OPENAI_DEPLOYMENT_NAME in .env
   model_name: "gpt-4o"
   temperature: 0.7
   max_tokens: 2000
 
-# LiteLLM Configuration
-litellm:
-  model: "gpt-4o"
-  api_base: ""
-  api_key: ""
-  api_version: "2024-02-15-preview"
-  timeout: 60
-  max_retries: 3
-
-# Milvus Database Configuration - Zilliz Cloud
+# Milvus Database Configuration
+# Values will be loaded from .env file
 milvus:
-  host: "in03-3f809e150d7cf58.serverless.aws-eu-central-1.cloud.zilliz.com"
-  port: 443
-  user: "db_3f809e150d7cf58"
-  password: "Uq3^;.X}BKc<Tfy9"
-  secure: true
-  collection_name: "test"
+  host: ""  # Set via MILVUS_HOST in .env
+  port: 443  # Set via MILVUS_PORT in .env
+  user: ""  # Set via MILVUS_USER in .env
+  password: ""  # Set via MILVUS_PASSWORD in .env
+  secure: true  # Set via MILVUS_SECURE in .env
+  collection_name: "test"  # Set via MILVUS_COLLECTION_NAME in .env
   dimension: 1536  # OpenAI embedding dimension
   index_type: "IVF_FLAT"
   metric_type: "L2"
@@ -35,7 +29,7 @@ milvus:
 # Embedding Configuration
 embeddings:
   model: "text-embedding-3-small"
-  deployment_name: "text-embedding-3-small"
+  deployment_name: "text-embedding-3-small"  # Set via AZURE_OPENAI_EMBEDDING_DEPLOYMENT in .env
   chunk_size: 500
   chunk_overlap: 50
   # Dimension varies by model:
