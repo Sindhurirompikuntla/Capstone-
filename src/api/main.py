@@ -14,11 +14,17 @@ from src.api.models import (
     SearchResponse,
     SearchResult,
     HealthResponse,
-    InputType
+    InputType,
+    SalesHelperRequest,
+    SalesHelperResponse,
+    ChatRequest,
+    ChatResponse
 )
 from src.agent.transcript_analyzer import TranscriptAnalyzer
 from src.agent.audio_processor import AudioProcessor
 from src.agent.vector_store import MilvusVectorStore
+from src.agent.sales_helper_agent import SalesHelperAgent
+from src.agent.chat_agent import ChatAgent
 from src.utils.config_loader import get_config
 from src.utils.logger import setup_logger
 from src.utils.document_processor import DocumentProcessor
@@ -47,6 +53,8 @@ app.add_middleware(
 # Initialize components
 transcript_analyzer = TranscriptAnalyzer()
 audio_processor = AudioProcessor()
+sales_helper_agent = SalesHelperAgent()
+chat_agent = ChatAgent()
 
 # Try to initialize Milvus, but continue without it if it fails
 try:
@@ -82,12 +90,24 @@ async def root():
                 padding: 20px;
             }
             .container {
-                max-width: 900px;
+                max-width: 1600px;
                 margin: 0 auto;
                 background: white;
                 border-radius: 20px;
                 box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                 padding: 40px;
+                display: flex;
+                gap: 30px;
+            }
+            .left-panel, .right-panel {
+                flex: 1;
+            }
+            .panel-title {
+                color: #667eea;
+                margin-bottom: 20px;
+                font-size: 1.8em;
+                border-bottom: 3px solid #667eea;
+                padding-bottom: 10px;
             }
             h1 {
                 color: #667eea;
@@ -110,6 +130,49 @@ async def root():
                 color: #333;
                 font-weight: 600;
                 font-size: 1.1em;
+            }
+            .chat-container {
+                display: flex;
+                flex-direction: column;
+                height: 600px;
+            }
+            .chat-messages {
+                flex: 1;
+                overflow-y: auto;
+                padding: 20px;
+                background: #f8f9ff;
+                border-radius: 10px;
+                margin-bottom: 20px;
+            }
+            .chat-message {
+                margin-bottom: 15px;
+                padding: 12px 16px;
+                border-radius: 10px;
+                max-width: 80%;
+            }
+            .chat-message.user {
+                background: #667eea;
+                color: white;
+                margin-left: auto;
+            }
+            .chat-message.assistant {
+                background: white;
+                border: 2px solid #e0e0e0;
+            }
+            .chat-input-container {
+                display: flex;
+                gap: 10px;
+            }
+            .chat-input {
+                flex: 1;
+                padding: 12px;
+                border: 2px solid #e0e0e0;
+                border-radius: 10px;
+                font-size: 16px;
+            }
+            .chat-button {
+                width: auto;
+                padding: 12px 30px;
             }
             select, textarea {
                 width: 100%;
@@ -212,17 +275,19 @@ async def root():
         </style>
     </head>
     <body>
-        <div class="container">
-            <h1>📊 Sales Transcript Analysis</h1>
-            <p class="subtitle">AI-Powered Analysis with Azure OpenAI & Milvus</p>
+        <h1 style="text-align: center; color: white; margin-bottom: 40px;">📊 Sales Transcript Analysis</h1>
 
-            <div class="input-section">
-                <label for="inputType">Select Input Type:</label>
-                <select id="inputType" onchange="toggleInputType()">
-                    <option value="text">Text Transcript</option>
-                    <option value="file">Upload File (PDF, Word, CSV, Excel, Audio)</option>
-                </select>
-            </div>
+        <div class="container">
+            <!-- LEFT PANEL: Transcript Analysis -->
+            <div class="left-panel">
+                <h2 class="panel-title">📝 Transcript Analysis</h2>
+                <div class="input-section">
+                    <label for="inputType">Select Input Type:</label>
+                    <select id="inputType" onchange="toggleInputType()">
+                        <option value="text">Text Transcript</option>
+                        <option value="file">Upload File (PDF, Word, CSV, Excel, Audio)</option>
+                    </select>
+                </div>
 
             <div id="textInput" class="input-section">
                 <label for="transcript">Paste Your Transcript:</label>
@@ -248,9 +313,30 @@ Client: That fits our $5,000 budget. What's next?"></textarea>
                 </div>
             </div>
 
-            <button onclick="analyzeTranscript()" id="analyzeBtn">🚀 Analyze Transcript</button>
+                <button onclick="analyzeTranscript()" id="analyzeBtn">🚀 Analyze Transcript</button>
 
-            <div id="results" class="hidden"></div>
+                <div id="results" class="hidden"></div>
+            </div>
+
+            <!-- RIGHT PANEL: Chat Agent -->
+            <div class="right-panel">
+                <h2 class="panel-title">🤖 Chat with RASA</h2>
+
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-message assistant">
+                            <strong>RASA:</strong><br>
+                            Hello! I can help you find information from stored transcripts. Ask me anything about past conversations, requirements, or recommendations.
+                        </div>
+                    </div>
+
+                    <div class="chat-input-container">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Ask me about stored transcripts..." onkeypress="if(event.key==='Enter') sendChat()">
+                        <button onclick="sendChat()" class="chat-button">Send</button>
+                        <button onclick="clearChat()" class="chat-button" style="background: #888;">Clear</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <script>
@@ -303,7 +389,10 @@ Client: That fits our $5,000 budget. What's next?"></textarea>
                         response = await fetch('/analyze/text', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ transcript: transcript })
+                            body: JSON.stringify({
+                                transcript: transcript,
+                                store_in_db: true
+                            })
                         });
                     } else {
                         if (!selectedFile) {
@@ -312,6 +401,7 @@ Client: That fits our $5,000 budget. What's next?"></textarea>
 
                         const formData = new FormData();
                         formData.append('file', selectedFile);
+                        formData.append('store_in_db', 'true');
 
                         // Determine endpoint based on file type
                         const fileExt = selectedFile.name.split('.').pop().toLowerCase();
@@ -348,20 +438,31 @@ Client: That fits our $5,000 budget. What's next?"></textarea>
 
                 let html = '<h3>✅ Analysis Complete</h3>';
 
-                // Requirements
+                // Show storage confirmation (without ID)
+                if (data.transcript_id) {
+                    html += `<div style="background: #e3f2fd; padding: 10px; border-radius: 5px; margin-bottom: 15px;">`;
+                    html += `💾 <strong>Stored in Database</strong>`;
+                    html += `</div>`;
+                }
+
+                // Requirements (without priority)
                 if (analysis.requirements && analysis.requirements.length > 0) {
                     html += '<div class="result-section"><h4>📋 Requirements</h4><ul>';
                     analysis.requirements.forEach(req => {
-                        html += `<li><strong>${req.requirement}</strong> (Priority: ${req.priority})</li>`;
+                        html += `<li><strong>${req.requirement}</strong></li>`;
                     });
                     html += '</ul></div>';
                 }
 
-                // Recommendations
+                // Recommendations (handle undefined values)
                 if (analysis.recommendations && analysis.recommendations.length > 0) {
                     html += '<div class="result-section"><h4>💡 Recommendations</h4><ul>';
                     analysis.recommendations.forEach(rec => {
-                        html += `<li><strong>${rec.product}</strong>: ${rec.rationale}</li>`;
+                        const product = rec.product || rec.product_service || 'Recommendation';
+                        const rationale = rec.rationale || '';
+                        if (rationale && rationale !== 'undefined') {
+                            html += `<li><strong>${product}</strong>: ${rationale}</li>`;
+                        }
                     });
                     html += '</ul></div>';
                 }
@@ -387,16 +488,178 @@ Client: That fits our $5,000 budget. What's next?"></textarea>
                     html += '</div>';
                 }
 
-                // Action Items
+                // Action Items (without priority)
                 if (analysis.action_items && analysis.action_items.length > 0) {
                     html += '<div class="result-section"><h4>✅ Action Items</h4><ul>';
                     analysis.action_items.forEach(item => {
-                        html += `<li><strong>${item.action}</strong> - ${item.owner} (${item.priority})</li>`;
+                        html += `<li><strong>${item.action}</strong> - ${item.owner}</li>`;
                     });
                     html += '</ul></div>';
                 }
 
                 resultsDiv.innerHTML = html;
+            }
+
+            async function getSalesHelp() {
+                const salesInput = document.getElementById('salesInput').value.trim();
+                const helperBtn = document.getElementById('helperBtn');
+                const resultsDiv = document.getElementById('helperResults');
+
+                if (!salesInput) {
+                    alert('Please describe the client needs');
+                    return;
+                }
+
+                helperBtn.disabled = true;
+                resultsDiv.className = 'results';
+                resultsDiv.innerHTML = '<h3>⏳ Processing...</h3>';
+
+                try {
+                    const response = await fetch('/sales-helper', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ salesperson_input: salesInput })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Request failed');
+                    }
+
+                    const data = await response.json();
+                    displaySalesHelperResults(data);
+
+                } catch (error) {
+                    resultsDiv.className = 'results error';
+                    resultsDiv.innerHTML = `<h3>❌ Error</h3><p>${error.message}</p>`;
+                } finally {
+                    helperBtn.disabled = false;
+                }
+            }
+
+            function displaySalesHelperResults(data) {
+                const resultsDiv = document.getElementById('helperResults');
+
+                let html = '<h3>✅ Analysis Complete</h3>';
+
+                // Requirements
+                if (data.requirements && data.requirements.length > 0) {
+                    html += '<div class="result-section"><h4>📋 Extracted Requirements</h4><ul>';
+                    data.requirements.forEach(req => {
+                        html += `<li><strong>${req.requirement}</strong><br>`;
+                        html += `Category: ${req.category} | Priority: ${req.priority}<br>`;
+                        if (req.details) html += `<em>${req.details}</em>`;
+                        html += `</li>`;
+                    });
+                    html += '</ul></div>';
+                }
+
+                // Search Results
+                if (data.search_results && data.search_results.length > 0) {
+                    html += '<div class="result-section"><h4>🔍 Similar Past Cases</h4>';
+                    data.search_results.forEach((result, idx) => {
+                        html += `<div style="margin-bottom: 15px; padding: 10px; background: #f5f5f5; border-radius: 5px;">`;
+                        html += `<strong>Case ${idx + 1}</strong><br>`;
+                        html += `<em>${result.transcript_text.substring(0, 150)}...</em>`;
+                        html += `</div>`;
+                    });
+                    html += '</div>';
+                }
+
+                // Recommendations
+                if (data.recommendations && data.recommendations.length > 0) {
+                    html += '<div class="result-section"><h4>💡 Recommendations</h4>';
+                    data.recommendations.forEach(rec => {
+                        html += `<div style="margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 8px;">`;
+                        html += `<h5 style="color: #2e7d32; margin-bottom: 10px;">🎯 ${rec.product_service}</h5>`;
+                        html += `<p><strong>Rationale:</strong> ${rec.rationale}</p>`;
+                        if (rec.key_benefits && rec.key_benefits.length > 0) {
+                            html += `<p><strong>Key Benefits:</strong></p><ul>`;
+                            rec.key_benefits.forEach(benefit => {
+                                html += `<li>${benefit}</li>`;
+                            });
+                            html += `</ul>`;
+                        }
+                        html += `<p><strong>Next Steps:</strong> ${rec.next_steps}</p>`;
+                        html += `<p><em>Priority: ${rec.priority} | Confidence: ${rec.confidence}</em></p>`;
+                        html += `</div>`;
+                    });
+                    html += '</div>';
+                }
+
+                resultsDiv.innerHTML = html;
+            }
+
+            // Chat functions
+            async function sendChat() {
+                const input = document.getElementById('chatInput');
+                const message = input.value.trim();
+
+                if (!message) return;
+
+                // Display user message
+                addChatMessage('user', message);
+                input.value = '';
+
+                // Show loading
+                const loadingId = 'loading-' + Date.now();
+                addChatMessage('assistant', '<em>Thinking...</em>', loadingId);
+
+                try {
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: message })
+                    });
+
+                    const data = await response.json();
+
+                    // Remove loading message
+                    document.getElementById(loadingId)?.remove();
+
+                    if (data.success) {
+                        addChatMessage('assistant', data.answer);
+                        // Removed: relevant documents message
+                    } else {
+                        addChatMessage('assistant', '❌ Error: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    document.getElementById(loadingId)?.remove();
+                    addChatMessage('assistant', '❌ Error: ' + error.message);
+                }
+            }
+
+            function addChatMessage(role, content, id = null, noStrong = false) {
+                const messagesDiv = document.getElementById('chatMessages');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `chat-message ${role}`;
+                if (id) messageDiv.id = id;
+
+                const label = role === 'user' ? 'You' : 'RASA';
+                if (noStrong) {
+                    messageDiv.innerHTML = content;
+                } else {
+                    messageDiv.innerHTML = `<strong>${label}:</strong><br>${content}`;
+                }
+
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
+            async function clearChat() {
+                if (!confirm('Clear chat history?')) return;
+
+                try {
+                    await fetch('/chat/clear', { method: 'POST' });
+                    const messagesDiv = document.getElementById('chatMessages');
+                    messagesDiv.innerHTML = `
+                        <div class="chat-message assistant">
+                            <strong>RASA:</strong><br>
+                            Chat history cleared. How can I help you?
+                        </div>
+                    `;
+                } catch (error) {
+                    alert('Error clearing chat: ' + error.message);
+                }
             }
         </script>
     </body>
@@ -449,13 +712,15 @@ async def analyze_text_transcript(request: TextAnalysisRequest):
             )
         
         # Store in database if requested
-        if request.store_in_db:
+        if request.store_in_db and MILVUS_ENABLED:
+            logger.info(f"Storing transcript {transcript_id} in Milvus database")
             vector_store.store_transcript(
                 transcript_id=transcript_id,
                 transcript_text=request.transcript,
                 analysis_result=analysis_result,
                 source_type=InputType.TEXT
             )
+            logger.info(f"✅ Transcript {transcript_id} stored successfully")
         
         return AnalysisResponse(
             success=True,
@@ -503,18 +768,24 @@ async def analyze_audio_transcript(
             f.write(content)
         
         # Transcribe audio
+        logger.info(f"Transcribing audio file: {temp_file_path}")
         transcript_text = audio_processor.transcribe_audio(str(temp_file_path))
-        
+
         if not transcript_text:
+            logger.error("Audio transcription returned empty result")
             return AnalysisResponse(
                 success=False,
                 transcript_id=transcript_id,
                 error="Failed to transcribe audio file",
                 source_type=InputType.AUDIO
             )
-        
+
+        logger.info(f"Transcription successful. Length: {len(transcript_text)} chars")
+
         # Analyze transcript
+        logger.info("Starting transcript analysis")
         analysis_result = transcript_analyzer.analyze_transcript(transcript_text)
+        logger.info(f"Analysis completed. Result keys: {list(analysis_result.keys())}")
         
         # Check for errors in analysis
         if "error" in analysis_result:
@@ -527,13 +798,15 @@ async def analyze_audio_transcript(
             )
         
         # Store in database if requested
-        if store_in_db:
+        if store_in_db and MILVUS_ENABLED:
+            logger.info(f"Storing audio transcript {transcript_id} in Milvus database")
             vector_store.store_transcript(
                 transcript_id=transcript_id,
                 transcript_text=transcript_text,
                 analysis_result=analysis_result,
                 source_type=InputType.AUDIO
             )
+            logger.info(f"✅ Audio transcript {transcript_id} stored successfully")
         
         return AnalysisResponse(
             success=True,
@@ -603,19 +876,16 @@ async def analyze_file(
         analysis_result = transcript_analyzer.analyze_transcript(transcript_text)
 
         # Store in vector database if requested
-        if store_in_db and vector_store:
+        if store_in_db and MILVUS_ENABLED:
             try:
+                logger.info(f"Storing file transcript {transcript_id} in Milvus database")
                 vector_store.store_transcript(
                     transcript_id=transcript_id,
                     transcript_text=transcript_text,
-                    metadata={
-                        "source": "file_upload",
-                        "filename": file.filename,
-                        "file_type": Path(file.filename).suffix,
-                        **analysis_result
-                    }
+                    analysis_result=analysis_result,
+                    source_type=f"file_{Path(file.filename).suffix}"
                 )
-                logger.info(f"Stored file analysis in vector database: {transcript_id}")
+                logger.info(f"✅ File transcript {transcript_id} stored successfully")
             except Exception as e:
                 logger.warning(f"Failed to store in vector database: {e}")
                 analysis_result["storage_warning"] = "Analysis completed but not stored in database"
@@ -707,6 +977,75 @@ async def get_transcript(transcript_id: str):
     except Exception as e:
         logger.error(f"Error retrieving transcript: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/sales-helper", response_model=SalesHelperResponse)
+async def sales_helper(request: SalesHelperRequest):
+    """Sales helper agent endpoint.
+
+    Captures requirements from salesperson, searches database, and provides recommendations.
+
+    Args:
+        request: Salesperson's description of client needs
+
+    Returns:
+        Requirements, search results, and recommendations
+    """
+    try:
+        logger.info(f"Sales helper request received: {request.salesperson_input[:100]}...")
+
+        result = sales_helper_agent.process_salesperson_input(request.salesperson_input)
+
+        return SalesHelperResponse(**result)
+
+    except Exception as e:
+        logger.error(f"Error in sales helper: {e}")
+        return SalesHelperResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """Chat with AI agent about stored transcript data.
+
+    Uses LangChain with conversation memory to answer questions based on stored data.
+
+    Args:
+        request: User's chat message and optional session ID
+
+    Returns:
+        AI response with relevant information from database
+    """
+    try:
+        logger.info(f"Chat request received: {request.message[:100]}...")
+
+        result = chat_agent.chat(
+            user_message=request.message,
+            session_id=request.session_id
+        )
+
+        return ChatResponse(**result)
+
+    except Exception as e:
+        logger.error(f"Error in chat: {e}")
+        return ChatResponse(
+            success=False,
+            answer="I apologize, but I encountered an error processing your message.",
+            error=str(e)
+        )
+
+
+@app.post("/chat/clear")
+async def clear_chat():
+    """Clear chat conversation memory."""
+    try:
+        chat_agent.clear_memory()
+        return {"success": True, "message": "Chat memory cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing chat memory: {e}")
+        return {"success": False, "error": str(e)}
 
 
 if __name__ == "__main__":

@@ -46,21 +46,23 @@ class AudioProcessor:
             with open(audio_file_path, 'rb') as audio_file:
                 # Use Azure OpenAI Whisper
                 deployment_name = self.config.get('audio.whisper_deployment', 'whisper-1')
+                self.logger.info(f"Using Whisper deployment: {deployment_name}")
 
                 response = self.client.audio.transcriptions.create(
                     model=deployment_name,
                     file=audio_file
                 )
-                
+
                 transcript = response.text
-                self.logger.info("Audio transcription completed successfully")
+                self.logger.info(f"Audio transcription completed successfully. Transcript length: {len(transcript)} chars")
+                self.logger.info(f"Transcript preview: {transcript[:200]}...")
                 return transcript
-                
+
         except FileNotFoundError:
             self.logger.error(f"Audio file not found: {audio_file_path}")
             return None
         except Exception as e:
-            self.logger.error(f"Error during audio transcription: {e}")
+            self.logger.error(f"Error during audio transcription: {e}", exc_info=True)
             return None
     
     def _validate_audio_file(self, file_path: str) -> bool:

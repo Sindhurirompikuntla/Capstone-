@@ -126,15 +126,22 @@ class MilvusVectorStore:
     
     def _get_embedding(self, text: str) -> List[float]:
         """Generate embedding for text using Azure OpenAI.
-        
+
         Args:
             text: Text to embed
-            
+
         Returns:
             Embedding vector
         """
         try:
             deployment_name = self.config.get('embeddings.deployment_name', 'text-embedding-ada-002')
+
+            # Truncate text if too long (8192 tokens ≈ 6000 words ≈ 30000 chars)
+            # Use a safe limit of 20000 characters to avoid token limit
+            max_chars = 20000
+            if len(text) > max_chars:
+                self.logger.warning(f"Text too long ({len(text)} chars), truncating to {max_chars} chars for embedding")
+                text = text[:max_chars]
 
             response = self.client.embeddings.create(
                 model=deployment_name,
@@ -142,7 +149,7 @@ class MilvusVectorStore:
             )
 
             return response.data[0].embedding
-            
+
         except Exception as e:
             self.logger.error(f"Failed to generate embedding: {e}")
             raise

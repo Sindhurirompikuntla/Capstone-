@@ -11,7 +11,7 @@ def main():
     # Get server settings
     host="localhost"
     port = config.get('fastapi.port', 8000)
-    reload = config.get('fastapi.reload', True)
+    reload = True 
     
     print(f"""
     ╔══════════════════════════════════════════════════════════════╗

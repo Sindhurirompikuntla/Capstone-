@@ -127,3 +127,34 @@ class HealthResponse(BaseModel):
     version: str
     services: Dict[str, str]
 
+
+# Sales Helper Agent Models
+class SalesHelperRequest(BaseModel):
+    """Request model for sales helper agent."""
+    salesperson_input: str = Field(..., description="Salesperson's description of client needs")
+
+
+class SalesHelperResponse(BaseModel):
+    """Response model for sales helper agent."""
+    success: bool
+    requirements: Optional[List[Dict[str, Any]]] = None
+    search_results: Optional[List[Dict[str, Any]]] = None
+    recommendations: Optional[List[Dict[str, Any]]] = None
+    conversation_id: Optional[int] = None
+    error: Optional[str] = None
+
+
+class ChatRequest(BaseModel):
+    """Request model for chat agent."""
+    message: str = Field(..., description="User's chat message")
+    session_id: Optional[str] = Field(None, description="Optional session ID for conversation tracking")
+
+
+class ChatResponse(BaseModel):
+    """Response model for chat agent."""
+    success: bool
+    answer: str
+    relevant_documents: Optional[int] = None
+    session_id: Optional[str] = None
+    error: Optional[str] = None
+
