@@ -1,28 +1,30 @@
-"""Sales Helper Agent with Agentic Approach."""
+"""Sales Helper Agent with Agentic Approach using LiteLLM."""
 import json
+import litellm
 from typing import Dict, Any, List, Optional
-from openai import AzureOpenAI
 from src.utils.config_loader import get_config
 from src.utils.logger import setup_logger
 from src.agent.vector_store import MilvusVectorStore
 
 
 class SalesHelperAgent:
-    """Agentic sales helper that captures requirements and searches database."""
-    
+    """Agentic sales helper that captures requirements and searches database using LiteLLM."""
+
     def __init__(self):
         """Initialize the sales helper agent."""
         self.config = get_config()
         self.logger = setup_logger(__name__)
-        
-        # Configure Azure OpenAI client
-        self.client = AzureOpenAI(
-            api_key=self.config.get('azure_openai.api_key'),
-            api_version=self.config.get('azure_openai.api_version'),
-            azure_endpoint=self.config.get('azure_openai.endpoint')
-        )
-        
+
+        # Configure LiteLLM for Azure OpenAI
+        self.api_key = self.config.get('azure_openai.api_key')
+        self.api_base = self.config.get('azure_openai.endpoint')
+        self.api_version = self.config.get('azure_openai.api_version')
         self.deployment_name = self.config.get('azure_openai.deployment_name')
+
+        # Set LiteLLM configuration
+        litellm.api_key = self.api_key
+        litellm.api_base = self.api_base
+        litellm.api_version = self.api_version
         
         # Initialize vector store for database search
         try:
@@ -103,20 +105,35 @@ class SalesHelperAgent:
             
             user_prompt = extraction_prompt.format(input=user_input)
             
-            response = self.client.chat.completions.create(
-                model=self.deployment_name,
+            # Use LiteLLM with JSON mode
+            response = litellm.completion(
+                model=f"azure/{self.deployment_name}",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
+                api_key=self.api_key,
+                api_base=self.api_base,
+                api_version=self.api_version,
                 temperature=0.3,
                 max_tokens=1500,
                 response_format={"type": "json_object"}
             )
-            
+
             content = response.choices[0].message.content
+
+            # Clean response - remove markdown code blocks if present
+            content = content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
             result = json.loads(content)
-            
+
             self.logger.info(f"Extracted {len(result.get('requirements', []))} requirements")
             return result.get('requirements', [])
             
@@ -197,18 +214,33 @@ class SalesHelperAgent:
                 context=context
             )
 
-            response = self.client.chat.completions.create(
-                model=self.deployment_name,
+            # Use LiteLLM with JSON mode
+            response = litellm.completion(
+                model=f"azure/{self.deployment_name}",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
+                api_key=self.api_key,
+                api_base=self.api_base,
+                api_version=self.api_version,
                 temperature=0.7,
                 max_tokens=2000,
                 response_format={"type": "json_object"}
             )
 
             content = response.choices[0].message.content
+
+            # Clean response - remove markdown code blocks if present
+            content = content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
             result = json.loads(content)
 
             self.logger.info(f"Generated {len(result.get('recommendations', []))} recommendations")

@@ -1,5 +1,6 @@
 """Milvus vector store for storing and retrieving transcripts."""
 import json
+import litellm
 from typing import List, Dict, Any, Optional
 from pymilvus import (
     connections,
@@ -9,28 +10,35 @@ from pymilvus import (
     DataType,
     utility
 )
-from openai import AzureOpenAI
 from src.utils.config_loader import get_config
 from src.utils.logger import setup_logger
+from src.utils.text_chunker import TextChunker
 
 
 class MilvusVectorStore:
-    """Manage transcript storage and retrieval using Milvus."""
-    
+    """Manage transcript storage and retrieval using Milvus with chunking support."""
+
     def __init__(self):
         """Initialize Milvus vector store."""
         self.config = get_config()
         self.logger = setup_logger(__name__)
 
-        # Configure Azure OpenAI client for embeddings
-        self.client = AzureOpenAI(
-            api_key=self.config.get('azure_openai.api_key'),
-            api_version=self.config.get('azure_openai.api_version'),
-            azure_endpoint=self.config.get('azure_openai.endpoint')
-        )
+        # Configure LiteLLM for Azure OpenAI embeddings
+        self.api_key = self.config.get('azure_openai.api_key')
+        self.api_base = self.config.get('azure_openai.endpoint')
+        self.api_version = self.config.get('azure_openai.api_version')
+        self.embedding_deployment = self.config.get('embeddings.deployment_name', 'text-embedding-ada-002')
+
+        # Set LiteLLM configuration
+        litellm.api_key = self.api_key
+        litellm.api_base = self.api_base
+        litellm.api_version = self.api_version
 
         self.collection_name = self.config.get('milvus.collection_name', 'test')
         self.dimension = self.config.get('milvus.dimension', 1536)
+
+        # Initialize text chunker
+        self.chunker = TextChunker()
 
         # Connect to Milvus
         self._connect()
@@ -125,7 +133,7 @@ class MilvusVectorStore:
         )
     
     def _get_embedding(self, text: str) -> List[float]:
-        """Generate embedding for text using Azure OpenAI.
+        """Generate embedding for text using LiteLLM with Azure OpenAI.
 
         Args:
             text: Text to embed
@@ -134,8 +142,6 @@ class MilvusVectorStore:
             Embedding vector
         """
         try:
-            deployment_name = self.config.get('embeddings.deployment_name', 'text-embedding-ada-002')
-
             # Truncate text if too long (8192 tokens ≈ 6000 words ≈ 30000 chars)
             # Use a safe limit of 20000 characters to avoid token limit
             max_chars = 20000
@@ -143,16 +149,89 @@ class MilvusVectorStore:
                 self.logger.warning(f"Text too long ({len(text)} chars), truncating to {max_chars} chars for embedding")
                 text = text[:max_chars]
 
-            response = self.client.embeddings.create(
-                model=deployment_name,
-                input=text
+            response = litellm.embedding(
+                model=f"azure/{self.embedding_deployment}",
+                input=[text],
+                api_key=self.api_key,
+                api_base=self.api_base,
+                api_version=self.api_version
             )
 
-            return response.data[0].embedding
+            return response.data[0]['embedding']
 
         except Exception as e:
             self.logger.error(f"Failed to generate embedding: {e}")
             raise
+
+    def chunk_and_display(self, text: str) -> Dict[str, Any]:
+        """Chunk text and display statistics (for demonstration).
+
+        This method demonstrates the chunking functionality using LangChain text splitters.
+
+        Args:
+            text: Text to chunk
+
+        Returns:
+            Dictionary with chunks and statistics
+        """
+        try:
+            self.logger.info("=" * 80)
+            self.logger.info("CHUNKING DEMONSTRATION")
+            self.logger.info("=" * 80)
+
+            # Method 1: Recursive Character Splitter (Recommended)
+            self.logger.info("\n📄 Method 1: Recursive Character Text Splitter")
+            self.logger.info("-" * 80)
+            recursive_chunks = self.chunker.chunk_text_recursive(text)
+            recursive_stats = self.chunker.get_chunk_stats(recursive_chunks)
+
+            self.logger.info(f"✓ Total Chunks: {recursive_stats['total_chunks']}")
+            self.logger.info(f"✓ Avg Chunk Size: {recursive_stats['avg_chunk_size']} chars")
+            self.logger.info(f"✓ Min/Max Size: {recursive_stats['min_chunk_size']}/{recursive_stats['max_chunk_size']} chars")
+
+            for idx, chunk in enumerate(recursive_chunks[:2], 1):  # Show first 2 chunks
+                self.logger.info(f"\nChunk {idx} Preview (first 200 chars):")
+                self.logger.info(f"  {chunk[:200]}...")
+
+            # Method 2: Token-based Splitter
+            self.logger.info("\n\n📄 Method 2: Token-based Text Splitter")
+            self.logger.info("-" * 80)
+            token_chunks = self.chunker.chunk_text_by_tokens(text)
+            token_stats = self.chunker.get_chunk_stats(token_chunks)
+
+            self.logger.info(f"✓ Total Chunks: {token_stats['total_chunks']}")
+            self.logger.info(f"✓ Avg Chunk Size: {token_stats['avg_chunk_size']} chars")
+            self.logger.info(f"✓ Min/Max Size: {token_stats['min_chunk_size']}/{token_stats['max_chunk_size']} chars")
+
+            # Method 3: Document Chunks with Metadata
+            self.logger.info("\n\n📄 Method 3: Document Chunks with Metadata")
+            self.logger.info("-" * 80)
+            doc_chunks = self.chunker.chunk_documents(
+                text,
+                metadata={'source': 'demo', 'type': 'transcript'}
+            )
+
+            self.logger.info(f"✓ Total Document Chunks: {len(doc_chunks)}")
+            if doc_chunks:
+                self.logger.info(f"\nFirst Document Chunk Info:")
+                self.logger.info(f"  Chunk Index: {doc_chunks[0]['chunk_index']}")
+                self.logger.info(f"  Total Chunks: {doc_chunks[0]['total_chunks']}")
+                self.logger.info(f"  Chunk Size: {doc_chunks[0]['chunk_size']} chars")
+                self.logger.info(f"  Metadata: {doc_chunks[0].get('metadata', {})}")
+
+            self.logger.info("\n" + "=" * 80)
+
+            return {
+                'recursive_chunks': recursive_chunks,
+                'recursive_stats': recursive_stats,
+                'token_chunks': token_chunks,
+                'token_stats': token_stats,
+                'document_chunks': doc_chunks
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error in chunking demonstration: {e}")
+            return {}
     
     def store_transcript(
         self,

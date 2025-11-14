@@ -1,31 +1,39 @@
-"""Sales transcript analyzer using Azure OpenAI."""
+"""Sales transcript analyzer using LiteLLM with LangChain text chunking."""
 import json
-from openai import AzureOpenAI
+import litellm
 from typing import Dict, Any, Optional
 from src.utils.config_loader import get_config
 from src.utils.logger import setup_logger
+from src.utils.text_chunker import TextChunker
 
 
 class TranscriptAnalyzer:
-    """Analyze sales conversation transcripts using Azure OpenAI."""
+    """Analyze sales conversation transcripts using LiteLLM with LangChain chunking."""
 
     def __init__(self):
         """Initialize the transcript analyzer."""
         self.config = get_config()
         self.logger = setup_logger(__name__)
 
-        # Configure Azure OpenAI client
-        self.client = AzureOpenAI(
-            api_key=self.config.get('azure_openai.api_key'),
-            api_version=self.config.get('azure_openai.api_version'),
-            azure_endpoint=self.config.get('azure_openai.endpoint')
-        )
-
+        # Configure LiteLLM for Azure OpenAI
+        self.api_key = self.config.get('azure_openai.api_key')
+        self.api_base = self.config.get('azure_openai.endpoint')
+        self.api_version = self.config.get('azure_openai.api_version')
         self.deployment_name = self.config.get('azure_openai.deployment_name')
-        self.logger.info(f"Azure OpenAI configured with deployment: {self.deployment_name}")
+
+        # Set LiteLLM configuration
+        litellm.api_key = self.api_key
+        litellm.api_base = self.api_base
+        litellm.api_version = self.api_version
+
+        # Initialize text chunker (LangChain)
+        self.chunker = TextChunker()
+
+        self.logger.info(f"LiteLLM configured with Azure OpenAI deployment: {self.deployment_name}")
+        self.logger.info(f"LangChain text chunker initialized")
     
     def analyze_transcript(self, transcript: str) -> Dict[str, Any]:
-        """Analyze a sales conversation transcript.
+        """Analyze a sales conversation transcript using LiteLLM with LangChain chunking.
 
         Args:
             transcript: The conversation transcript text
@@ -33,9 +41,17 @@ class TranscriptAnalyzer:
         Returns:
             Dictionary containing analysis results with requirements, recommendations, and summary
         """
-        self.logger.info("Starting transcript analysis")
+        self.logger.info("Starting transcript analysis with LiteLLM + LangChain chunking")
 
         try:
+            # Demonstrate chunking if text is long
+            if len(transcript) > 5000:
+                self.logger.info(f"Transcript is long ({len(transcript)} chars), demonstrating chunking...")
+                chunks = self.chunker.chunk_text_recursive(transcript)
+                stats = self.chunker.get_chunk_stats(chunks)
+                self.logger.info(f"📊 Chunking Stats: {stats['total_chunks']} chunks, "
+                               f"avg size: {stats['avg_chunk_size']} chars")
+
             # Get prompts
             system_prompt = self.config.get_prompt('system_prompt')
             analysis_prompt = self.config.get_prompt('analysis_prompt')
@@ -43,15 +59,18 @@ class TranscriptAnalyzer:
             # Format the analysis prompt with transcript
             user_prompt = analysis_prompt.format(transcript=transcript)
 
-            self.logger.info(f"Calling Azure OpenAI with deployment: {self.deployment_name}")
+            self.logger.info(f"Calling LiteLLM with Azure deployment: {self.deployment_name}")
 
-            # Call Azure OpenAI
-            response = self.client.chat.completions.create(
-                model=self.deployment_name,
+            # Call LiteLLM with Azure OpenAI (supports JSON mode)
+            response = litellm.completion(
+                model=f"azure/{self.deployment_name}",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
+                api_key=self.api_key,
+                api_base=self.api_base,
+                api_version=self.api_version,
                 temperature=self.config.get('azure_openai.temperature', 0.7),
                 max_tokens=self.config.get('azure_openai.max_tokens', 2000),
                 response_format={"type": "json_object"}
@@ -59,7 +78,17 @@ class TranscriptAnalyzer:
 
             # Extract and parse response
             content = response.choices[0].message.content
-            self.logger.info(f"Azure OpenAI Response: {content[:200]}...")
+            self.logger.info(f"LiteLLM Response: {content[:200]}...")
+
+            # Clean response - remove markdown code blocks if present
+            content = content.strip()
+            if content.startswith("```json"):
+                content = content[7:]  # Remove ```json
+            if content.startswith("```"):
+                content = content[3:]  # Remove ```
+            if content.endswith("```"):
+                content = content[:-3]  # Remove trailing ```
+            content = content.strip()
 
             analysis_result = json.loads(content)
             self.logger.info(f"Parsed result keys: {list(analysis_result.keys())}")
